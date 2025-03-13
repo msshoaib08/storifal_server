@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import authRoutes from './routes/auth.routes.js';
 
 import connectStorifalDB from './config/db.js';
 
@@ -14,9 +15,7 @@ server.use(cors());
 // DB Connection
 connectStorifalDB();
 
-server.get('/', (req, res) => {
-	res.send('Welcome to the server of Storifal');
-});
+server.use('/api/auth', authRoutes);
 
 const PORT = process.env.PORT || 8000;
 

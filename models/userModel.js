@@ -16,9 +16,13 @@ const userSchema = new mongoose.Schema({
 	},
 
 	blogs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Blog' }],
+	total_reads: { type: Number, default: 0 },
+	total_blogs: { type: Number, default: 0 },
+
 	isVerified: { type: Boolean, default: false },
-	otp: { type: String },
-	otpExpiry: { type: Date },
+	emailVerificationToken: String,
+	// otp: { type: String },
+	// otpExpiry: { type: Date },
 
 	googleId: { type: String, unique: true, sparse: true },
 	authType: { type: String, enum: ['manual', 'google'], default: 'manual' },
