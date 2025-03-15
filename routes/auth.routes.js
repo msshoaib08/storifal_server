@@ -1,8 +1,13 @@
 import express from 'express';
-import { registerUser, verifyEmail } from '../controllers/auth.controller.js';
+import {
+	checkEmailExists,
+	registerUser,
+	verifyEmail,
+} from '../controllers/auth.controller.js';
 
 const router = express.Router();
 
+router.post('/check-email', checkEmailExists);
 router.post('/register', registerUser);
 router.get('/verify-email', verifyEmail);
 

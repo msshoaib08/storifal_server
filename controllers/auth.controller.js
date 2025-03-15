@@ -5,55 +5,74 @@ import { User } from '../models/userModel.js';
 import { sendEmailVerification } from '../config/emailService.js';
 import isDisposalEmails from 'is-disposable-email';
 
+/**
+ * Utility function for handling errors in a consistent format.
+ */
+const handleErrorResponse = (res, status, message) => {
+	return res.status(status).json({ message });
+};
+
+/**
+ * Password regex pattern to enforce security standards.
+ */
 const passwordRegex =
 	/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/;
 
+/**
+ * @route   POST /api/auth/register
+ * @desc    Register a new user & send email verification
+ * @access  Public
+ */
 export const registerUser = async (req, res) => {
 	try {
 		const { name, email, password } = req.body;
 
+		// Validate required fields
 		if (!name || !email || !password) {
-			return res.status(400).json({ message: 'All fields are required' });
+			return handleErrorResponse(res, 400, 'All fields are required.');
 		}
 
-		// Validate Email format
+		// Validate email format
 		if (!validator.isEmail(email)) {
-			return res.status(400).json({ message: 'Invalid email format' });
+			return handleErrorResponse(res, 400, 'Invalid email format.');
 		}
 
-		// Disposal Email domain verification
+		// Reject disposable email domains
 		if (isDisposalEmails(email)) {
-			return res
-				.status(400)
-				.json({ message: 'Disposable email addresses are not allowed.' });
+			return handleErrorResponse(
+				res,
+				400,
+				'Disposable emails are not allowed.'
+			);
 		}
 
-		// Validate password strength
+		// Enforce password security rules
 		if (!passwordRegex.test(password)) {
-			return res.status(400).json({
-				message:
-					'Password must be at least 6 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
-			});
+			return handleErrorResponse(
+				res,
+				400,
+				'Password must be at least 6 characters long, contain an uppercase letter, a lowercase letter, a number, and a special character.'
+			);
 		}
 
-		// Check if email already exists
+		// Check if email is already registered
 		const existingUser = await User.findOne({ email });
 
 		if (existingUser) {
-			return res.status(400).json({ message: 'Email already exists.' });
+			return handleErrorResponse(res, 400, 'Email already exists.');
 		}
 
-		// Hash Password
+		// Hash password before saving
 		const hashedPassword = await bcrypt.hash(password, 10);
 
-		// Generate email verification token
+		// Generate email verification token (short expiration)
 		const emailVerificationToken = jwt.sign(
 			{ email },
 			process.env.JWT_SECRET_KEY,
-			{ expiresIn: '1h' }
+			{ expiresIn: '30m' } // Shorter expiry for security
 		);
 
-		// Create and Save User to Database
+		// Create new user
 		const newUser = new User({
 			name,
 			email,
@@ -64,40 +83,45 @@ export const registerUser = async (req, res) => {
 
 		await newUser.save();
 
-		// Send Email Verification Link
+		// Send verification email
 		await sendEmailVerification(email, emailVerificationToken);
 
+		// Response
 		res.status(201).json({
-			message: 'Verification link sent to email. Please verify your account.',
+			message:
+				'Verification link sent to your email. Please verify your account.',
 			userId: newUser._id,
 		});
 	} catch (error) {
-		console.log(error);
-		res
-			.status(500)
-			.json({ message: 'Internal server error', error: error.message });
+		console.error(error);
+		handleErrorResponse(res, 500, 'Internal server error');
 	}
 };
 
+/**
+ * @route   GET /api/auth/verify-email
+ * @desc    Verify email from token
+ * @access  Public
+ */
 export const verifyEmail = async (req, res) => {
 	try {
 		const { token } = req.query;
 
 		if (!token) {
-			return res.status(400).json({ message: 'Invalid or expired token' });
+			return handleErrorResponse(res, 400, 'Invalid or expired token.');
 		}
 
-		// Decode Token
+		// Decode and validate token
 		const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
 		const user = await User.findOne({ email: decoded.email });
 
 		if (!user) {
-			return res.status(404).json({ message: 'User not found' });
+			return handleErrorResponse(res, 404, 'User not found.');
 		}
 
-		// Check if user is already verified
+		// Prevent re-verification
 		if (user.isVerified) {
-			return res.status(400).json({ message: 'Email already verified.' });
+			return handleErrorResponse(res, 400, 'Email already verified.');
 		}
 
 		// Mark user as verified
@@ -109,6 +133,97 @@ export const verifyEmail = async (req, res) => {
 			.status(200)
 			.json({ message: 'Email verified successfully. You can now log in.' });
 	} catch (error) {
-		res.status(400).json({ message: 'Invalid or expired token' });
+		console.error(error);
+		handleErrorResponse(res, 400, 'Invalid or expired token.');
+	}
+};
+
+/**
+ * @route   POST /api/auth/check-email
+ * @desc    Check if email exists
+ * @access  Public
+ */
+export const checkEmailExists = async (req, res) => {
+	try {
+		const { email } = req.body;
+
+		if (!email) {
+			return handleErrorResponse(res, 400, 'Email is required.');
+		}
+
+		if (!validator.isEmail(email)) {
+			return handleErrorResponse(res, 400, 'Invalid email format.');
+		}
+
+		const existingUser = await User.findOne({ email });
+
+		res.json({ exists: !!existingUser });
+	} catch (error) {
+		console.error(error);
+		handleErrorResponse(res, 500, 'Server Error');
+	}
+};
+
+/**
+ * @route   POST /api/auth/login
+ * @desc    Authentication user and issue JWT token
+ * @access  Public
+ */
+
+export const login = async (req, res) => {
+	try {
+		const { email, password } = req.body;
+
+		if (!email || !password) {
+			return handleErrorResponse(res, 400, 'Email and password are required.');
+		}
+
+		if (!validator.isEmail(email)) {
+			return handleErrorResponse(res, 400, 'Invalid email format.');
+		}
+
+		const user = await User.findOne({ email });
+
+		if (!user) {
+			return handleErrorResponse(res, 401, 'Invalid email or password.');
+		}
+
+		if (!user.isVerified) {
+			return handleErrorResponse(
+				res,
+				403,
+				'Email is not verified. Please verify your email.'
+			);
+		}
+
+		const isMatch = await bcrypt.compare(password, user.password);
+		if (!isMatch) {
+			return handleErrorResponse(res, 401, 'Invalid email or password.');
+		}
+
+		// Generate JWT token
+		const token = jwt.sign(
+			{
+				userId: user._id,
+				email: user.email,
+			},
+			process.env.JWT_SECRET_KEY,
+			{
+				expiresIn: '7d',
+			}
+		);
+
+		res.status(200).json({
+			message: 'Login successful.',
+			token,
+			user: {
+				id: user._id,
+				name: user.name,
+				email: user.email,
+			},
+		});
+	} catch (error) {
+		console.log(error);
+		handleErrorResponse(res, 500, 'Server Error');
 	}
 };
