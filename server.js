@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes.js';
+import contactRoutes from './routes/contact.route.js';
 
 import connectStorifalDB from './config/db.js';
 
@@ -16,6 +17,7 @@ server.use(cors());
 connectStorifalDB();
 
 server.use('/api/auth', authRoutes);
+server.use('/api/contact', contactRoutes);
 
 const PORT = process.env.PORT || 8000;
 
